@@ -16,8 +16,8 @@ if os.path.exists(FONT_PATH):
 else:
     font_prop = None
 
-st.title("🛡️ 経営戦略・資金調達シミュレーター")
-st.write("「死の谷」を可視化し、リスクをゼロにするための『必要資金額』を算出します。")
+st.title("🚀 経営戦略・資金調達シミュレーター")
+st.write("「新規大口取引」の先行支出を正確に反映。必要な資金額を逆算します。")
 
 # --- サイドバー設定 ---
 st.sidebar.header("📊 1. 既存事業（ベースライン）")
@@ -59,14 +59,15 @@ if execute_button:
         loan_balance = 0
         
         for m in range(1, months + 1):
-            # A. 共通の事業収支（5%変動リスク）
+            # A. 既存事業（5%変動リスク）
             current_base_sales = np.random.normal(base_revenue, base_revenue * 0.05)
             base_profit = current_base_sales * (1 - var_cost_rate) - fixed_cost
             
-            new_in = 1500 if m >= (start_month + payment_lag) else 0 # 簡略化
-            new_out = 1050 if m >= start_month else 0 # 1500 * 0.7
+            # B. 新規取引（修正ポイント：変数を正しく使用）
+            new_in = new_deal_rev if m >= (start_month + payment_lag) else 0
+            new_out = (new_deal_rev * new_deal_var_rate) if m >= start_month else 0
             
-            # B. 融資なしパス
+            # 融資なしパス
             cash_no = cash_no + base_profit + (new_in - new_out)
             path_no.append(cash_no)
             
@@ -93,7 +94,6 @@ if execute_button:
         fig, ax = plt.subplots(figsize=(10, 6))
         is_short = np.any(results_with < 0, axis=1)
         
-        # 融資ありの軌跡
         ax.plot(time_axis, results_with[~is_short].T, color='gray', alpha=0.02)
         if np.any(is_short):
             ax.plot(time_axis, results_with[is_short].T, color='#d62728', alpha=0.04)
@@ -108,11 +108,9 @@ if execute_button:
         st.pyplot(fig)
 
     with col2:
-        # 1. 本来の最大資金需要（融資なしの中央値ベース）
         median_no_loan = np.median(results_no, axis=0)
         true_demand = initial_cash - np.min(median_no_loan)
         
-        # 2. 融資後の結果
         short_rate = (np.sum(is_short) / trials) * 100
         min_cash_after = np.min(np.median(results_with, axis=0))
 
@@ -124,11 +122,9 @@ if execute_button:
         st.metric("融資後の最低残高 (Net)", f"{min_cash_after:.0f} 万円", delta=f"{loan_amount}万 調達後")
         st.metric("最終的な資金ショート確率", f"{short_rate:.2f} %")
 
-        st.write("---")
-        st.subheader("💡 コンサルタントの診断")
         if min_cash_after < 0:
-            st.error(f"融資額が不足しています。あと **{abs(min_cash_after):.0f}万円** 上積みしなければ、計画倒れになる恐れがあります。")
+            st.error(f"警告：融資額が不足しています。")
         elif min_cash_after < 300:
-            st.warning(f"首の皮一枚で繋がっていますが、余裕がありません。あと **{300 - min_cash_after:.0f}万円** 増額して予備費を持つべきです。")
+            st.warning(f"注意：最低限の余力（300万円）を確保できていません。")
         else:
-            st.success("適切な調達計画です。不測の事態にも耐えられる厚みが確保されています。")
+            st.success("良好：安全な資金計画です。")
