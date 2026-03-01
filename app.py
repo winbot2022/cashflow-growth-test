@@ -29,8 +29,8 @@ var_cost_rate = st.sidebar.slider("既存の変動費率 (%)", 0, 100, 40) / 100
 # --- サイドバー：2. 新規取引（非定常状態） ---
 st.sidebar.markdown("---")
 st.sidebar.header("⚡ 2. 新規大口取引の衝撃")
-new_deal_rev = st.sidebar.number_input("新規取引の月間売上 (万円)", value=1500, step=100)
-new_deal_var_rate = st.sidebar.slider("新規取引の変動費率 (%)", 0, 100, 70) / 100
+new_deal_rev = st.sidebar.number_input("新規取引の月間売上 (万円)", value=700, step=100)
+new_deal_var_rate = st.sidebar.slider("新規取引の変動費率 (%)", 0, 100, 40) / 100
 start_month = st.sidebar.slider("プロジェクト開始月 (支出発生)", 1, 6, 3)
 payment_lag = st.sidebar.slider("入金までのラグ (ヶ月)", 1, 6, 2)
 
@@ -124,7 +124,7 @@ if execute_button:
 
     with col2:
         short_rate = (np.sum(is_short) / trials) * 100
-        st.metric("倒産確率（融資考慮後）", f"{short_rate:.2f} %")
+        st.metric("資金ショート確率（融資考慮後）", f"{short_rate:.2f} %")
         
         median_path = np.median(results, axis=0)
         min_cash = np.min(median_path)
