@@ -107,24 +107,37 @@ if execute_button:
         ax.legend(prop=font_prop)
         st.pyplot(fig)
 
-    with col2:
-        median_no_loan = np.median(results_no, axis=0)
-        true_demand = initial_cash - np.min(median_no_loan)
-        
-        short_rate = (np.sum(is_short) / trials) * 100
-        min_cash_after = np.min(np.median(results_with, axis=0))
+    # --- 評価指標の計算部分を以下に修正 ---
 
-        st.metric("本来の最大資金需要 (Gross)", f"{true_demand:.0f} 万円")
-        st.caption("※融資を受けない場合に不足する『正味の金額』です。")
+if execute_button:
+    # ...（シミュレーション実行部分は同じ）
+
+    with col2:
+        # 【修正ポイント】中央値ではなく「全試行の最小値」から需要を算出
+        # 1. 本来の最大資金需要（全1000回の中で、最も深く沈んだ瞬間の凹み幅）
+        min_path_no_loan = np.min(results_no, axis=1) # 各試行の最低点を抽出
+        absolute_worst_no_loan = np.min(min_path_no_loan) # その中の世界最悪の1点を特定
+        
+        # 初期キャッシュからどれだけ持ち出したか（需要）
+        true_max_demand = initial_cash - absolute_worst_no_loan if absolute_worst_no_loan < initial_cash else 0
+        
+        # 2. 融資後の結果
+        short_rate = (np.sum(is_short) / trials) * 100
+        # 融資ありの中での最悪点
+        min_path_with_loan = np.min(results_with, axis=1)
+        absolute_worst_with_loan = np.min(min_path_with_loan)
+
+        st.metric("真の最大資金需要 (Worst Case)", f"{true_max_demand:.0f} 万円")
+        st.caption(f"※{trials}回の試行中、最も運が悪かったシナリオでの必要額です。")
         
         st.write("---")
         
-        st.metric("融資後の最低残高 (Net)", f"{min_cash_after:.0f} 万円", delta=f"{loan_amount}万 調達後")
+        # 融資後の「最悪のシナリオでの残高」を表示
+        st.metric("最悪時の残高 (Worst Case Net)", f"{absolute_worst_with_loan:.0f} 万円", delta=f"{loan_amount}万 調達後")
         st.metric("最終的な資金ショート確率", f"{short_rate:.2f} %")
 
-        if min_cash_after < 0:
-            st.error(f"警告：融資額が不足しています。")
-        elif min_cash_after < 300:
-            st.warning(f"注意：最低限の余力（300万円）を確保できていません。")
+        st.write("---")
+        if absolute_worst_with_loan < 0:
+            st.error(f"【結論】最悪の事態（不運の重なり）を想定すると、あと {abs(absolute_worst_with_loan):.0f} 万円の資金が不足します。")
         else:
-            st.success("良好：安全な資金計画です。")
+            st.success("【結論】1000回のシミュレーション上、すべての不運が重なっても耐えきれる計画です。")
