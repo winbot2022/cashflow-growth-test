@@ -106,7 +106,7 @@ if execute_button:
         if np.any(is_short):
             ax.plot(time_axis, results_with[is_short].T, color='#d62728', alpha=0.04)
         
-        ax.plot(time_axis, np.median(results_with, axis=0), color='#1f77b4', linewidth=4, label='融資後の資金推移（中央値）')
+        ax.plot(time_axis, np.median(results_with, axis=0), color='#1f77b4', linewidth=4, label='資金推移（中央値）')
         ax.axhline(0, color='black', linewidth=2.5)
         ax.set_xticks(time_axis)
         
