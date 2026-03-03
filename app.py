@@ -46,7 +46,8 @@ trials = st.sidebar.select_slider("シミュレーション回数", options=[100
 execute_button = st.sidebar.button("🚀 戦略シミュレーションを実行")
 
 if execute_button:
-    months = 18
+   # months = 18
+    months = 8
     results_with_loan = []
     results_no_loan = []
     
