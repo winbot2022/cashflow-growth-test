@@ -25,14 +25,14 @@ st.write("「最悪の事態」を想定した資金需要を算出し、倒産�
 st.sidebar.header("📊 1. 既存事業（ベースライン）")
 initial_cash = st.sidebar.number_input("現在の現預金 (万円)", value=1000, step=100)
 
-# ★変更①：最小・最大売上入力
+# 売上レンジ入力
 min_revenue = st.sidebar.number_input("最小月間売上 (万円)", value=1200, step=100)
 max_revenue = st.sidebar.number_input("最大月間売上 (万円)", value=1800, step=100)
 
 fixed_cost = st.sidebar.number_input("既存の月間固定費 (万円)", value=1000, step=50)
 var_cost_rate = st.sidebar.slider("既存の変動費率 (%)", 0, 100, 40) / 100
 
-# ★変更②：平均・標準偏差の計算
+# 最小・最大から平均と標準偏差を算出
 mean_revenue = (min_revenue + max_revenue) / 2
 std_revenue = (max_revenue - min_revenue) / 6 if max_revenue > min_revenue else 1e-6
 
@@ -55,95 +55,150 @@ trials = st.sidebar.select_slider("シミュレーション回数", options=[100
 execute_button = st.sidebar.button("🚀 戦略シミュレーションを実行")
 
 if execute_button:
-    months = 8
-    results_with_loan = []
-    results_no_loan = []
-    
-    monthly_repay_principal = loan_amount / (repay_years * 12) if loan_amount > 0 else 0
-    
-    for _ in range(trials):
-        cash_with = initial_cash
-        cash_no = initial_cash
-        path_with = [cash_with]
-        path_no = [cash_no]
-        
-        loan_balance = 0
-        
-        for m in range(1, months + 1):
-            # ★変更③：売上生成（レンジベース＋クリップ）
-            current_base_sales = np.random.normal(mean_revenue, std_revenue)
-            current_base_sales = np.clip(current_base_sales, min_revenue, max_revenue)
+    if min_revenue > max_revenue:
+        st.error("最小月間売上が最大月間売上を上回っています。入力値を見直してください。")
+    else:
+        months = 8
+        results_with_loan = []
+        results_no_loan = []
 
-            base_profit = current_base_sales * (1 - var_cost_rate) - fixed_cost
-            
-            # 新規取引
-            new_in = new_deal_rev if m >= (start_month + payment_lag) else 0
-            new_out = (new_deal_rev * new_deal_var_rate) if m >= start_month else 0
-            
-            # 融資なし
-            cash_no = cash_no + base_profit + (new_in - new_out)
-            path_no.append(cash_no)
-            
-            # 融資あり
-            l_in = loan_amount if m == loan_month else 0
-            l_out = 0
-            if m == loan_month:
-                loan_balance = loan_amount
-            
-            if m > loan_month and loan_balance > 0:
-                interest_payment = (loan_balance * interest_rate) / 12
-                l_out = monthly_repay_principal + interest_payment
-                loan_balance -= monthly_repay_principal
-            
-            cash_with = cash_with + base_profit + (new_in - new_out) + (l_in - l_out)
-            path_with.append(cash_with)
+        monthly_repay_principal = loan_amount / (repay_years * 12) if loan_amount > 0 else 0
 
-        results_with_loan.append(path_with)
-        results_no_loan.append(path_no)
+        for _ in range(trials):
+            cash_with = initial_cash
+            cash_no = initial_cash
+            path_with = [cash_with]
+            path_no = [cash_no]
 
-    results_with = np.array(results_with_loan)
-    results_no = np.array(results_no_loan)
-    time_axis = np.arange(months + 1)
+            loan_balance = 0
 
-    # --- 描画 ---
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        fig, ax = plt.subplots(figsize=(10, 6))
-        is_short = np.any(results_with < 0, axis=1)
-        
-        ax.plot(time_axis, results_with[~is_short].T, color='gray', alpha=0.02)
-        if np.any(is_short):
-            ax.plot(time_axis, results_with[is_short].T, color='#d62728', alpha=0.04)
-        
-        ax.plot(time_axis, np.median(results_with, axis=0), color='#1f77b4', linewidth=4)
-        ax.axhline(0, color='black', linewidth=2.5)
-        ax.set_xticks(time_axis)
+            for m in range(1, months + 1):
+                # A. 既存事業売上（最小・最大レンジから正規分布生成し、上下限をクリップ）
+                current_base_sales = np.random.normal(mean_revenue, std_revenue)
+                current_base_sales = np.clip(current_base_sales, min_revenue, max_revenue)
+                base_profit = current_base_sales * (1 - var_cost_rate) - fixed_cost
 
-        ax.axvline(start_month, color='green', linestyle='--', alpha=0.6)
-        ax.axvline(start_month + payment_lag, color='orange', linestyle='--', alpha=0.6)
-        if loan_amount > 0:
-            ax.axvline(loan_month, color='gold', linewidth=3, alpha=0.5)
+                # B. 新規取引
+                new_in = new_deal_rev if m >= (start_month + payment_lag) else 0
+                new_out = (new_deal_rev * new_deal_var_rate) if m >= start_month else 0
 
-        ax.set_title("戦略的資金調達シミュレーション", fontproperties=font_prop)
-        ax.set_xlabel("月数", fontproperties=font_prop)
-        ax.set_ylabel("現預金残高 (万円)", fontproperties=font_prop)
-        st.pyplot(fig)
+                # 融資なしパス
+                cash_no = cash_no + base_profit + (new_in - new_out)
+                path_no.append(cash_no)
 
-    with col2:
-        absolute_worst_no_loan = np.min(results_no)
-        true_max_demand = initial_cash - absolute_worst_no_loan if absolute_worst_no_loan < initial_cash else 0
-        
-        short_rate = (np.sum(is_short) / trials) * 100
-        absolute_worst_with_loan = np.min(results_with)
+                # C. 融資ありパス
+                l_in = loan_amount if m == loan_month else 0
+                l_out = 0
+                if m == loan_month:
+                    loan_balance = loan_amount
 
-        st.metric("真の最大資金需要", f"{true_max_demand:.0f} 万円")
-        st.metric("最悪時残高", f"{absolute_worst_with_loan:.0f} 万円")
-        st.metric("資金ショート確率", f"{short_rate:.2f} %")
+                if m > loan_month and loan_balance > 0:
+                    interest_payment = (loan_balance * interest_rate) / 12
+                    l_out = monthly_repay_principal + interest_payment
+                    loan_balance -= monthly_repay_principal
 
-        if absolute_worst_with_loan < 0:
-            st.error(f"{abs(absolute_worst_with_loan):.0f}万円不足")
-        elif absolute_worst_with_loan < 300:
-            st.warning(f"余力 {absolute_worst_with_loan:.0f}万円")
-        else:
-            st.success("安全圏です")
+                cash_with = cash_with + base_profit + (new_in - new_out) + (l_in - l_out)
+                path_with.append(cash_with)
+
+            results_with_loan.append(path_with)
+            results_no_loan.append(path_no)
+
+        results_with = np.array(results_with_loan)
+        results_no = np.array(results_no_loan)
+        time_axis = np.arange(months + 1)
+
+        # --- 描画 ---
+        col1, col2 = st.columns([2, 1])
+
+        with col1:
+            fig, ax = plt.subplots(figsize=(10, 6))
+            is_short = np.any(results_with < 0, axis=1)
+
+            # 安全ルート
+            ax.plot(time_axis, results_with[~is_short].T, color='gray', alpha=0.02)
+
+            # ショートルート
+            if np.any(is_short):
+                ax.plot(time_axis, results_with[is_short].T, color='#d62728', alpha=0.04)
+
+            # 中央値
+            ax.plot(
+                time_axis,
+                np.median(results_with, axis=0),
+                color='#1f77b4',
+                linewidth=4,
+                label='資金推移（中央値）'
+            )
+
+            ax.axhline(0, color='black', linewidth=2.5)
+            ax.set_xticks(time_axis)
+
+            # 凡例対象の縦線
+            ax.axvline(
+                start_month,
+                color='green',
+                linestyle='--',
+                alpha=0.6,
+                label='取引開始（支出発生）'
+            )
+            ax.axvline(
+                start_month + payment_lag,
+                color='orange',
+                linestyle='--',
+                alpha=0.6,
+                label='入金開始'
+            )
+
+            if loan_amount > 0:
+                ax.axvline(
+                    loan_month,
+                    color='gold',
+                    linestyle='-',
+                    linewidth=3,
+                    alpha=0.5,
+                    label='融資実行'
+                )
+
+            ax.set_title("戦略的資金調達シミュレーション", fontproperties=font_prop, fontsize=16)
+            ax.set_xlabel("月数 (Month)", fontproperties=font_prop)
+            ax.set_ylabel("現預金残高 (万円)", fontproperties=font_prop)
+            ax.legend(prop=font_prop, loc='upper left')
+
+            st.pyplot(fig)
+
+        with col2:
+            absolute_worst_no_loan = np.min(results_no)
+            true_max_demand = initial_cash - absolute_worst_no_loan if absolute_worst_no_loan < initial_cash else 0
+
+            short_rate = (np.sum(is_short) / trials) * 100
+            absolute_worst_with_loan = np.min(results_with)
+
+            st.metric("真の最大資金需要 (Worst Case)", f"{true_max_demand:.0f} 万円")
+            st.caption(f"※全{trials}試行中、最も運が悪かった時の必要額。融資設定によらず一定です。")
+
+            st.write("---")
+
+            st.metric("最悪時の残高 (Worst Case Net)", f"{absolute_worst_with_loan:.0f} 万円", delta=f"{loan_amount}万 調達後")
+            st.metric("最終的な資金ショート確率", f"{short_rate:.2f} %")
+
+            if loan_amount > 0:
+                st.write("---")
+                st.write("**💰 返済計画の概要**")
+                st.write(f"- 毎月の元金返済: **{monthly_repay_principal:.1f}万円**")
+                st.write(f"- 初回利息目安: **{(loan_amount * interest_rate / 12):.2f}万円**")
+                st.caption(f"※{repay_years}年（{repay_years * 12}回） / 年利{interest_rate * 100:.1f}%")
+
+            st.write("---")
+            st.write("**📊 売上分布の前提**")
+            st.write(f"- 最小月間売上: **{min_revenue:.0f}万円**")
+            st.write(f"- 最大月間売上: **{max_revenue:.0f}万円**")
+            st.write(f"- 想定平均売上: **{mean_revenue:.0f}万円**")
+            st.write(f"- 推定標準偏差: **{std_revenue:.1f}万円**")
+
+            st.write("---")
+            if absolute_worst_with_loan < 0:
+                st.error(f"【診断】最悪のシナリオでは、あと {abs(absolute_worst_with_loan):.0f}万円 不足します。")
+            elif absolute_worst_with_loan < 300:
+                st.warning(f"【診断】計算上は耐えられますが、予備費が {absolute_worst_with_loan:.0f}万円 しか残りません。")
+            else:
+                st.success("【診断】最悪の事態が起きても耐え抜ける、盤石な計画です。")
